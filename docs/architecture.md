@@ -35,11 +35,11 @@ Victron SmartSolar (BLE advertisements)
 
 - **BLE:** ESP32 `BLEDevice`, `BLEScan`, `BLEAdvertisedDevice`; callback copies manufacturer data with `memcpy`/`c_str()` to avoid truncation on `0x00`.
 - **Crypto:** `mbedtls/aes.h` – AES-128-CTR; nonce = 16 bytes (2-byte counter from packet, little-endian + zero padding).
-- **Display:** TFT_eSPI (ST7789, 135×240); one screen with battery V/I, solar W, yield Wh, load A, state, error.
+- **Display:** TFT_eSPI (ST7789, 135×240); two pages (Status, Yield & info). Right button (GPIO 35) switches pages.
 - **Config:** AES key from `config.h` (`VICTRON_AES_KEY_HEX`), parsed at startup.
 
 ## Display behaviour
 
-- Refresh when a new valid BLE packet is decoded.
+- Two pages: Page 1 = Status (solar W, battery V/I, state, error, load state/current/power); Page 2 = Yield & info (today Wh, device name, history note). Refresh when a new valid BLE packet is decoded or when the user switches page (BTN2).
 - After 10 s with no valid packet: show “No signal” once (no redraw every loop).
-- Left button (GPIO 0): cycle backlight (off / low / mid / high).
+- Left button (GPIO 0): cycle backlight (off / low / mid / high). Right button (GPIO 35): next page.

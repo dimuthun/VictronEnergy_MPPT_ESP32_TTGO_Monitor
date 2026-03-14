@@ -29,7 +29,11 @@ Displays live data from a Victron SmartSolar MPPT 100/20 (or compatible) on an E
 
 Upload the sketch, power the TTGO from USB or 5 V. Ensure the SmartSolar is powered and within BLE range. The display shows battery voltage, current, solar power, today’s yield, charge state, and optional error code. If no BLE packet is received for several seconds, "No signal" is shown.
 
-**Buttons:** Left button (GPIO 0) cycles backlight brightness (off / low / mid / high).
+**Display pages:** Use the **right button (GPIO 35)** to switch pages. Page 1 = Status (solar W, battery V/I, state, error, load state/current/power). Page 2 = Yield & info (today Wh, device name, "History: use Victron app", last update).
+
+**Buttons:** Left button (GPIO 0) cycles backlight brightness (off / low / mid / high). Right button (GPIO 35) switches to the next display page.
+
+**Limitations:** History (daily yield, Pmax, lifetime, etc.) and solar voltage/current are not available from BLE advertising; use the Victron app for those.
 
 ## References
 

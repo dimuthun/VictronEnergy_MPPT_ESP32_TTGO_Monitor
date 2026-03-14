@@ -13,6 +13,6 @@
 
 // Replace with your Victron encryption key (32 hex chars -> 16 bytes)
 // Example: "dc73cb155351cf950f9f3a958b5cd96f"
-#define VICTRON_AES_KEY_HEX "0000000000000000000000000000"
+#define VICTRON_AES_KEY_HEX "7cc614fcf10a62170520e9fc5ad53ba7"
 
 #endif
