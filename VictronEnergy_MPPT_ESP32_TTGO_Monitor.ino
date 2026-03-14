@@ -30,6 +30,7 @@
 #define RELAY_ACTIVE_LOW    0   // 1 = relay ON when pin LOW; 0 = relay ON when pin HIGH
 #define RELAY_ON_THRESHOLD_V   24.0f   // relay ON when battery >= this
 #define RELAY_OFF_THRESHOLD_V  23.8f   // relay OFF when battery < this
+#define RELAY_DEBOUNCE_MS   15000   // voltage must hold for 15 s before relay state changes
 #define BACKLIGHT_CHANNEL   0
 #define NUM_PAGES           3
 #define PAGE_INTERVAL_MS    5000
@@ -438,17 +439,37 @@ void loop() {
   BLEScanResults results = pBLEScan->start(BLE_SCAN_TIME_SEC, false);
   pBLEScan->clearResults();
 
-  // Relay with hysteresis: ON when >= 24V, OFF when < 23.8V; between 23.8-24V keeps prev state
+  // Relay with hysteresis + time debounce: state changes only after voltage holds for RELAY_DEBOUNCE_MS
   static bool relayState = false;
+  static bool relayDesiredState = false;
+  static uint32_t relayStateChangeTime = 0;
   bool hasValidData = (lastPacketTime != 0 && (millis() - lastPacketTime <= NO_SIGNAL_TIMEOUT_MS));
-  if (hasValidData) {
-    if (dispBatteryV >= RELAY_ON_THRESHOLD_V)
-      relayState = true;
-    else if (dispBatteryV < RELAY_OFF_THRESHOLD_V)
-      relayState = false;
+
+  if (!hasValidData) {
+    relayState = false;           // fail-safe: OFF immediately when no BLE data
+    relayStateChangeTime = 0;
   } else {
-    relayState = false;   // fail-safe when no BLE data
+    bool desired;
+    if (dispBatteryV >= RELAY_ON_THRESHOLD_V)
+      desired = true;
+    else if (dispBatteryV < RELAY_OFF_THRESHOLD_V)
+      desired = false;
+    else
+      desired = relayDesiredState;   // hysteresis band: keep previous desired
+    relayDesiredState = desired;
+
+    if (desired != relayState) {
+      if (relayStateChangeTime == 0)
+        relayStateChangeTime = millis();
+      if ((millis() - relayStateChangeTime) >= RELAY_DEBOUNCE_MS) {
+        relayState = desired;
+        relayStateChangeTime = 0;
+      }
+    } else {
+      relayStateChangeTime = 0;   // reset so next change requires full debounce
+    }
   }
+
   #if RELAY_ACTIVE_LOW
   digitalWrite(RELAY_PIN, relayState ? LOW : HIGH);  // active-LOW: ON when pin LOW
   #else
