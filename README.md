@@ -35,6 +35,10 @@ Upload the sketch, power the TTGO from USB or 5 V. Ensure the SmartSolar is powe
 
 **Limitations:** History (daily yield, Pmax, lifetime, etc.) and solar voltage/current are not available from BLE advertising; use the Victron app for those.
 
+## Header logo
+
+The header icon is defined in **logo.h** from `assets/logo_icon.png`. To use a different image: place your PNG in `assets/logo_icon.png`, then run `py scripts/png_to_1bit_logo.py` (requires Python 3 and Pillow) and paste the generated array into **logo.h**. Alternatively use [image2cpp](https://javl.github.io/image2cpp/) with "Horizontal 1 bit per pixel" and height 28.
+
 ## References
 
 - [Victron BLE advertising protocol](https://community.victronenergy.com/questions/187303/victron-bluetooth-advertising-protocol.html)

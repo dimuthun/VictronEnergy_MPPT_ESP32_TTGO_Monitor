@@ -35,10 +35,11 @@
 #define NUM_PAGES           3
 #define PAGE_INTERVAL_MS    5000
 #define HEADER_HEIGHT       28   // Solar W only
+#define CONTENT_OFFSET_Y    5    // pixels below header for page content
 #define FOOTER_HEIGHT       22   // Battery V, A, V*A on all pages
 #define COLOR_LABEL         TFT_YELLOW
 #define COLOR_MINMAX        TFT_CYAN
-#define LINE_H              26   // font 4 line height (landscape 240x135)
+#define LINE_H              26   // font 4 line height (font 3 not in TFT_eSPI)
 #define BACKLIGHT_FREQ      5000
 #define BACKLIGHT_RES      8
 static const uint8_t backlightLevels[] = { 0, 80, 160, 255 };
@@ -265,7 +266,7 @@ static void drawFooter() {
 static void drawPageStatus() {
   tft.setTextDatum(TL_DATUM);
   char buf[64];
-  int y = HEADER_HEIGHT;
+  int y = HEADER_HEIGHT + CONTENT_OFFSET_Y;
 
   tft.setTextColor(COLOR_LABEL, TFT_BLACK);
   tft.drawString("State: ", 4, y, 4);
@@ -289,7 +290,7 @@ static void drawPageStatus() {
 static void drawPageYieldInfo() {
   tft.setTextDatum(TL_DATUM);
   char buf[48];
-  int y = HEADER_HEIGHT;
+  int y = HEADER_HEIGHT + CONTENT_OFFSET_Y;
 
   tft.setTextColor(COLOR_LABEL, TFT_BLACK);
   tft.drawString("Yield ", 4, y, 4);
@@ -302,13 +303,13 @@ static void drawPageYieldInfo() {
 static void drawPageMinMax() {
   tft.setTextDatum(TL_DATUM);
   char buf[32];
-  int y = HEADER_HEIGHT;
+  int y = HEADER_HEIGHT + CONTENT_OFFSET_Y;
   int x = 4;
 
-  // Line 1: Solar  Min: X W  Max: Y W (Min/Max in font 2 - small)
+  // Line 1: Solar  Min: X W  Max: Y W (font 3 not in TFT_eSPI; use 4 and 2)
   tft.setTextColor(COLOR_LABEL, TFT_BLACK);
-  tft.drawString("Solar ", x, y, 4);
-  x += tft.textWidth("Solar ", 4);
+  tft.drawString("SOL ", x, y, 4);
+  x += tft.textWidth("SOL ", 4);
   tft.setTextColor(COLOR_MINMAX, TFT_BLACK);
   tft.drawString("Min: ", x, y + 4, 2);
   x += tft.textWidth("Min: ", 2);
@@ -327,8 +328,8 @@ static void drawPageMinMax() {
   // Line 2: Load  Min: X W  Max: Y W
   x = 4;
   tft.setTextColor(COLOR_LABEL, TFT_BLACK);
-  tft.drawString("Load ", x, y, 4);
-  x += tft.textWidth("Load ", 4);
+  tft.drawString("LD ", x, y, 4);
+  x += tft.textWidth("LD ", 4);
   tft.setTextColor(COLOR_MINMAX, TFT_BLACK);
   tft.drawString("Min: ", x, y + 4, 2);
   x += tft.textWidth("Min: ", 2);
@@ -347,8 +348,8 @@ static void drawPageMinMax() {
   // Line 3: Bat  Min: X V  Max: Y V
   x = 4;
   tft.setTextColor(COLOR_LABEL, TFT_BLACK);
-  tft.drawString("Bat ", x, y, 4);
-  x += tft.textWidth("Bat ", 4);
+  tft.drawString("BAT ", x, y, 4);
+  x += tft.textWidth("BAT ", 4);
   tft.setTextColor(COLOR_MINMAX, TFT_BLACK);
   tft.drawString("Min: ", x, y + 4, 2);
   x += tft.textWidth("Min: ", 2);
