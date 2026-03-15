@@ -1,6 +1,6 @@
 # VictronEnergy_MPPT_ESP32_TTGO_Monitor
 
-Displays live data from a Victron SmartSolar MPPT 100/20 (or compatible) on an ESP32 TTGO T-Display 1.14" by reading and decrypting BLE advertising packets.
+Displays live data from a Victron SmartSolar MPPT 100/20 (or compatible) on an ESP32 TTGO T-Display 1.14" by reading and decrypting BLE advertising packets. Firmware version 1.0.0 (see [CHANGELOG.md](CHANGELOG.md)).
 
 ## Hardware
 
@@ -20,18 +20,20 @@ Displays live data from a Victron SmartSolar MPPT 100/20 (or compatible) on an E
 
 ## Victron encryption key
 
-1. In **VictronConnect**, pair your SmartSolar and open **Settings → Product info**.
-2. Enable **Instant readout via Bluetooth** and tap **Show** in the Encryption data section.
-3. Copy the 32-character hex key.
-4. In this sketch, open **config.h** and replace `VICTRON_AES_KEY_HEX` with your key (or replace the `key[]` array in the main .ino if you use the byte array there).
+1. Copy **config.example.h** to **config.h** (e.g. `cp config.example.h config.h`). Do not commit **config.h** if it contains your real key (it is listed in .gitignore).
+2. In **VictronConnect**, pair your SmartSolar and open **Settings → Product info**.
+3. Enable **Instant readout via Bluetooth** and tap **Show** in the Encryption data section.
+4. Copy the 32-character hex key and set it in **config.h** as `VICTRON_AES_KEY_HEX`. The key must be exactly 32 hex characters; if not, the display will show "Bad key" at startup.
 
 ## Usage
 
 Upload the sketch, power the TTGO from USB or 5 V. Ensure the SmartSolar is powered and within BLE range. The display shows battery voltage, current, solar power, today’s yield, charge state, and optional error code. If no BLE packet is received for several seconds, "No signal" is shown.
 
-**Display pages:** Use the **right button (GPIO 35)** to switch pages. Page 1 = Status (solar W, battery V/I, state, error, load state/current/power). Page 2 = Yield & info (today Wh, device name, "History: use Victron app", last update).
+**Display pages:** Three pages auto-rotate every 5 seconds when BLE signal is present: Page 1 = Status (state, error, load W). Page 2 = Yield (today Wh) and firmware version. Page 3 = Min/Max (solar, load, battery).
 
-**Buttons:** Left button (GPIO 0) cycles backlight brightness (off / low / mid / high). Right button (GPIO 35) switches to the next display page.
+**Buttons:** Left button (GPIO 0) cycles backlight brightness (off / low / mid / high). Right button (GPIO 35) is reserved.
+
+**Relay:** Optional relay on GPIO 25: turns ON when battery voltage ≥ 24 V and OFF when &lt; 23.8 V, with 15 s debounce to avoid chatter. Relay is forced OFF when there is no valid BLE data (fail-safe). Configure `RELAY_PIN`, `RELAY_ON_THRESHOLD_V`, `RELAY_OFF_THRESHOLD_V`, and `RELAY_DEBOUNCE_MS` in the .ino if needed.
 
 **Limitations:** History (daily yield, Pmax, lifetime, etc.) and solar voltage/current are not available from BLE advertising; use the Victron app for those.
 

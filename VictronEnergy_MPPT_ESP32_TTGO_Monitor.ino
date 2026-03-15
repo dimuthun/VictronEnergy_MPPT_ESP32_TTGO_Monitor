@@ -15,11 +15,15 @@
 #include "mbedtls/aes.h"
 #include <TFT_eSPI.h>
 #include <string.h>
+#include <ctype.h>
 #include "config.h"
 #include "logo.h"
 
 // ESP32 BLE may return String or std::string; set to match your board package
 #define USE_String
+
+#define FW_VERSION          "1.0.0"
+#define DEBUG_VICTRON      0   // 1 = enable Serial debug output
 
 #define BLE_SCAN_TIME_SEC   1
 #define NO_SIGNAL_TIMEOUT_MS 10000
@@ -42,6 +46,12 @@
 #define LINE_H              26   // font 4 line height (font 3 not in TFT_eSPI)
 #define BACKLIGHT_FREQ      5000
 #define BACKLIGHT_RES      8
+// Sanity bounds for decoded values (avoid layout/buffer issues from bad packets)
+#define CLAMP_V_MIN         0.0f
+#define CLAMP_V_MAX         100.0f
+#define CLAMP_I_MAX         100.0f
+#define CLAMP_POWER_MAX     10000
+#define CLAMP_YIELD_MAX     999999.0f
 static const uint8_t backlightLevels[] = { 0, 80, 160, 255 };
 #define NUM_BACKLIGHT_LEVELS (sizeof(backlightLevels)/sizeof(backlightLevels[0]))
 uint8_t backlightIndex = 2;  // default mid brightness
@@ -100,6 +110,15 @@ float    minLoadW;
 float    minBatteryV;
 float    minBatteryI;
 float    lastYieldWh;       // for new-day detection
+
+// --- Check key is exactly 32 hex characters (for startup validation) ---
+static bool isKeyValid(const char* hex) {
+  if (!hex) return false;
+  if (strlen(hex) != 32) return false;
+  for (int i = 0; i < 32; i++)
+    if (!isxdigit((unsigned char)hex[i])) return false;
+  return true;
+}
 
 // --- Parse 32-char hex string into 16-byte key ---
 static void parseHexKey(const char* hex, uint8_t* out) {
@@ -186,6 +205,20 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     int outCurr9       = ((pd->outputCurrentHi & 0x01) << 8) | pd->outputCurrentLo;
     float newOutputCurrentA = (float)outCurr9 * 0.1f;
     float newLoadW     = newBatteryV * newOutputCurrentA;
+
+    // Clamp to sane ranges (corrupted packets / overflow)
+    if (newBatteryV < CLAMP_V_MIN) newBatteryV = CLAMP_V_MIN;
+    if (newBatteryV > CLAMP_V_MAX) newBatteryV = CLAMP_V_MAX;
+    if (newBatteryI < -CLAMP_I_MAX) newBatteryI = -CLAMP_I_MAX;
+    if (newBatteryI > CLAMP_I_MAX) newBatteryI = CLAMP_I_MAX;
+    if (newInputPowerW > (uint16_t)CLAMP_POWER_MAX) newInputPowerW = CLAMP_POWER_MAX;
+    if (newTodayYieldWh < 0.0f) newTodayYieldWh = 0.0f;
+    if (newTodayYieldWh > CLAMP_YIELD_MAX) newTodayYieldWh = CLAMP_YIELD_MAX;
+    if (newOutputCurrentA < 0.0f) newOutputCurrentA = 0.0f;
+    if (newOutputCurrentA > CLAMP_I_MAX) newOutputCurrentA = CLAMP_I_MAX;
+    newLoadW = newBatteryV * newOutputCurrentA;
+    if (newLoadW < 0.0f) newLoadW = 0.0f;
+    if (newLoadW > (float)CLAMP_POWER_MAX) newLoadW = (float)CLAMP_POWER_MAX;
 
     // New day: yield dropped (midnight rollover) -> reset max/min values
     if (lastPacketTime != 0 && newTodayYieldWh < lastYieldWh) {
@@ -286,7 +319,7 @@ static void drawPageStatus() {
   tft.drawString(buf, 4 + tft.textWidth("Load ", 4), y, 4);
 }
 
-// --- Page 1: Yield (max 3 lines) ---
+// --- Page 1: Yield + firmware version ---
 static void drawPageYieldInfo() {
   tft.setTextDatum(TL_DATUM);
   char buf[48];
@@ -297,6 +330,12 @@ static void drawPageYieldInfo() {
   snprintf(buf, sizeof(buf), "%.0f Wh", (double)dispTodayYieldWh);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.drawString(buf, 4 + tft.textWidth("Yield ", 4), y, 4);
+  y += LINE_H;
+
+  tft.setTextColor(COLOR_LABEL, TFT_BLACK);
+  tft.drawString("FW ", 4, y, 2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString(FW_VERSION, 4 + tft.textWidth("FW ", 2), y, 2);
 }
 
 // --- Page 2: Min/Max combined, 3 lines, format: Label Min: val Max: val ---
@@ -348,8 +387,8 @@ static void drawPageMinMax() {
   // Line 3: Bat  Min: X V  Max: Y V
   x = 4;
   tft.setTextColor(COLOR_LABEL, TFT_BLACK);
-  tft.drawString("BAT ", x, y, 4);
-  x += tft.textWidth("BAT ", 4);
+  tft.drawString("BT ", x, y, 4);
+  x += tft.textWidth("BT ", 4);
   tft.setTextColor(COLOR_MINMAX, TFT_BLACK);
   tft.drawString("Min: ", x, y + 4, 2);
   x += tft.textWidth("Min: ", 2);
@@ -386,10 +425,37 @@ void drawNoSignal() {
   tft.drawString("Check key & range", 4, 60, 4);
 }
 
+static void drawBadKeyScreen() {
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_RED, TFT_BLACK);
+  tft.drawString("Bad key", 4, 4, 4);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString("Check config.h: 32 hex chars", 4, 32, 2);
+  tft.drawString("Copy config.example.h -> config.h", 4, 50, 2);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(500);
+  Serial.println("Victron Monitor " FW_VERSION);
 
+  // Init display first so we can show "Bad key" if config is wrong
+  ledcSetup(BACKLIGHT_CHANNEL, BACKLIGHT_FREQ, BACKLIGHT_RES);
+  ledcAttachPin(TFT_BACKLIGHT_PIN, BACKLIGHT_CHANNEL);
+  ledcWrite(BACKLIGHT_CHANNEL, backlightLevels[backlightIndex]);
+  pinMode(BTN1_PIN, INPUT);
+  pinMode(BTN2_PIN, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);   // relay OFF at boot
+  tft.init();
+  tft.setRotation(1);   // landscape: 240 wide x 135 tall
+  tft.fillScreen(TFT_BLACK);
+  tft.drawString("Starting...", 4, 4, 4);
+
+  if (!isKeyValid(VICTRON_AES_KEY_HEX)) {
+    drawBadKeyScreen();
+    for (;;) delay(1000);
+  }
   parseHexKey(VICTRON_AES_KEY_HEX, key);
 
   strcpy(savedDeviceName, "(unknown)");
@@ -401,20 +467,6 @@ void setup() {
   maxLoadW = maxBatteryV = maxBatteryI = lastYieldWh = 0.0f;
   minSolarW = 65535;
   minLoadW = minBatteryV = minBatteryI = 99999.0f;
-
-  // Backlight: PWM for brightness (Button 1 cycles levels)
-  ledcSetup(BACKLIGHT_CHANNEL, BACKLIGHT_FREQ, BACKLIGHT_RES);
-  ledcAttachPin(TFT_BACKLIGHT_PIN, BACKLIGHT_CHANNEL);
-  ledcWrite(BACKLIGHT_CHANNEL, backlightLevels[backlightIndex]);
-  pinMode(BTN1_PIN, INPUT);
-  pinMode(BTN2_PIN, INPUT);
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);   // relay OFF at boot
-
-  tft.init();
-  tft.setRotation(1);   // landscape: 240 wide x 135 tall
-  tft.fillScreen(TFT_BLACK);
-  tft.drawString("Starting...", 4, 4, 4);
 
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan();
